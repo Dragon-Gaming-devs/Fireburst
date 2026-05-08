@@ -12,8 +12,8 @@ class CheerpXManager {
         if (this.isInitialized) return;
 
         try {
-            // Import CheerpX
-            const CheerpX = await import('https://cxrtnc.leaningtech.com/1.2.8/cx.esm.js');
+            // Import CheerpX from local vendor files
+            const CheerpX = await import('/vendor/cheerpx/cx.esm.js');
 
             // Set up file system devices
             const cloudDevice = await CheerpX.CloudDevice.create(
