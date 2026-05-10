@@ -86,9 +86,33 @@ function showAuthError(msg) {
     err.style.display = 'block';
 }
 
-// 1. THE ULTIMATE BYPASS: Disguises the data as a Script Tag
+// 1. FETCH-BASED BACKEND REQUEST (handles both GET with JSONP fallback and POST)
 function jsonpRequest(url, payload) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+        // First try POST fetch
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+                credentials: 'omit'  // Don't send cookies for cross-origin
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            resolve(data);
+            return;
+        } catch (fetchError) {
+            // Fallback to JSONP script tag if fetch fails
+            console.warn("POST failed, falling back to JSONP:", fetchError);
+        }
+
+        // JSONP fallback for maximum compatibility
         const callbackName = 'jsonp_cb_' + Math.round(1000000 * Math.random());
         
         window[callbackName] = function(data) {
@@ -107,7 +131,11 @@ function jsonpRequest(url, payload) {
         script.onerror = () => {
             reject(new Error("CORS or Network Failure"));
             delete window[callbackName];
-            document.body.removeChild(script);
+            if (script.parentNode) document.body.removeChild(script);
+        };
+        
+        script.onload = () => {
+            // Script loaded but callback might not have fired yet
         };
         
         document.body.appendChild(script);

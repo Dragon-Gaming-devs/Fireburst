@@ -29,6 +29,17 @@ if (typeof window === "undefined") {
             return;
         }
 
+        // Exclude auth/backend requests from strict COOP headers
+        const isAuthRequest = originalRequest.url.includes('/exec') || 
+                              originalRequest.url.includes('script.google.com') ||
+                              originalRequest.method === 'OPTIONS';
+        
+        if (isAuthRequest) {
+            // Let auth requests pass through without modifying headers
+            event.respondWith(fetch(originalRequest));
+            return;
+        }
+
         const request = coepCredentialless && originalRequest.mode === "no-cors"
             ? new Request(originalRequest, { credentials: "omit" })
             : originalRequest;
