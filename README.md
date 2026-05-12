@@ -10,7 +10,6 @@
 > NOTICE: This repository is *purely* __Experimental__ in nature and should not be used commercially!
 
 ## Features
-<hr />
 
 <em><strong><cite>Fireburst OS</cite></strong></em> is a Desktop environment in the browser with a VFS that aims to support as many filetypes as possible via WASM, [Cheerpx](http://cheerpx.io), [Cheerp](http://cheerp.io) and [Cheerpj](http://Cheerpj.com). This can include some desktop applications, namely linux ELF files. <em>Fireburst</em> also aims to provide other similar services such as [BrowserCode](https://github.com/leaningtech/browsercode/), Github PAT Integration, and secure browsers such as [Scramjet](http://github.com/mercuryworkshop/scramjet) and [Ultraviolet](http://github.com/titanitumnetwork-dev/ultraviolet). Perhaps most importantly of all, <em>Fireburst</em> is designed to run on github pages making it *very* easy to deploy. 
 #### All Features:
@@ -31,8 +30,6 @@
 </cite>
 
 ## Deployment
-
-<hr />
 
 <em>Fireburst</em> runs on GitHub pages making it very easy to deploy; all you need is a browser and a github account. If you would rather use the demo it is located [here](https://dragon-gaming-platforms.github.io/Fireburst/)
 #### Deploy <em>Fireburst OS</em>
@@ -147,3 +144,8 @@ function deleteMessage(room, id) {
     * Execute As ME 
     * Anyone
 5. Then click ```Deploy``` and copy the URL that is outputed, that is your ```BACKEND_URL```
+
+
+# Credits
+
+There are so many services and repositories that have assisted in the creation of this Repository so go over to [CREDITS.md](/CREDITS.md) and check it out!
