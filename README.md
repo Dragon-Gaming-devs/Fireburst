@@ -17,6 +17,7 @@
 #### All Features:
 
 <cite>
+
 * [Cheerpx](http://cheerpx.io)  
 * [Cheerp](http://cheerp.io)  
 * [Cheerpj](http://cheerpj.com)  
@@ -27,6 +28,7 @@
 * [Eaglercraft](http://eaglercraft.com)  
 * [jsnes](github.com/ put somthing here /jsnes/)  
 * [Github Repository Editor](http://github.com/Dragon-Gaming-Platforms/github-web-editor)
+
 </cite>
 
 ## Deployment
