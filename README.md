@@ -25,7 +25,7 @@
 * [Scramjet](http://github.com/mercuryworkshop/scramjet/)  
 * [Ultraviolet](http://github.com/titaniumnetwork-dev/ultraviolet)  
 * [Eaglercraft](http://eaglercraft.com)  
-* [jsnes](github.com/ put somthing here /jsnes/)  
+* [jsnes](github.com/bfirsh/jsnes/)  
 * [Github Repository Editor](http://github.com/Dragon-Gaming-Platforms/github-web-editor)
 
 </cite>
