@@ -37,7 +37,7 @@
 Fork Repository
 Go to settings on your forked repository
 Click on the ```secret values``` tab
-Add a secret value titled ```BACKEND_URL``` with a value of ```https://script.google.com/a/macros/bluevalleyk12.net/s/AKfycbzMXpbGjF3BKTD-kHpk3xW3qlgSMukKuZOXqAyJU1sH8mk3Il7oFzLlp4xKHeivmBsY/exec```` 
+Add a secret value titled ```BACKEND_URL``` see [Deploy Google Apps Script Backend](#Deploy Google Apps Scripts Backend)
 Go to ```.github/workflows/deploy.yml``` on your fork and press run workflow or ```workflow_dispatch```
 It should redirect you to the workflows overview, when it finishes there should be a hyperlink that you can click on that will take you to your site! The URL should be https:// ```<your username>``` .github.io/ ```<your repo name>``` /
 Enjoy!
