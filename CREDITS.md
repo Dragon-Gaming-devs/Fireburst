@@ -1,6 +1,5 @@
 <div>
 <h1 align="center">Credits</h1>
----
 </div>
 
 There are *so* many websites, services and code that went into this project. A huge thanks to [<cite>Anura OS</cite>](http://github.com/mercuryworkshop/anura); <em>Fireburst</em> was inspired by <em>Anura OS<em> so without it <em>Fireburst</em> would not exist.
