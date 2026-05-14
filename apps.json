@@ -68,5 +68,14 @@
         "category": "Proxy",
         "preinstalled": false,
         "icon": "🌐"
+    },
+    {
+        "id": "fireburst-browser",
+        "name": "Fireburst Browser",
+        "path": "apps/browsers/Browser.html",
+        "category": "Browser",
+        "preinstalled": true,
+        "icon": "🔗",
+        "description": "Simple iframe-based web browser with configurable settings"
     }
 ]

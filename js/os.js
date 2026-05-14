@@ -64,13 +64,10 @@ function loadWindowState() {
     }
 }
 // --------------------------------------------------------
-// GLOBAL AUTH SYSTEM (Single Sign-On with JSONP Bypass)
+// GLOBAL AUTH SYSTEM (Puter.js Integration)
 // --------------------------------------------------------
 let isLoginMode = true;
-function getConfiguredBackendUrl() {
-    if (!window.RUNTIME_CONFIG || typeof window.RUNTIME_CONFIG.BACKEND_URL !== 'string') return '';
-    return window.RUNTIME_CONFIG.BACKEND_URL.trim();
-}
+let puterAuthInitialized = false;
 
 function toggleAuthMode() {
     isLoginMode = !isLoginMode;
@@ -86,81 +83,46 @@ function showAuthError(msg) {
     err.style.display = 'block';
 }
 
-// 1. FETCH-BASED BACKEND REQUEST (handles both GET with JSONP fallback and POST)
-function jsonpRequest(url, payload) {
-    return new Promise(async (resolve, reject) => {
-        // First try POST fetch
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-                credentials: 'omit'  // Don't send cookies for cross-origin
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
-            resolve(data);
+// CHECK AUTH - Check if already authenticated with Puter
+async function checkAuth() {
+    try {
+        // Check if Puter backend is initialized
+        if (!window.puterBackend) {
+            console.warn('Puter backend not loaded');
+            document.getElementById('lock-screen').classList.remove('hidden');
             return;
-        } catch (fetchError) {
-            // Fallback to JSONP script tag if fetch fails
-            console.warn("POST failed, falling back to JSONP:", fetchError);
         }
 
-        // JSONP fallback for maximum compatibility
-        const callbackName = 'jsonp_cb_' + Math.round(1000000 * Math.random());
-        
-        window[callbackName] = function(data) {
-            resolve(data);
-            delete window[callbackName];
-            document.body.removeChild(script);
-        };
-        
-        const script = document.createElement('script');
-        let queryString = `?callback=${callbackName}`;
-        for (let key in payload) {
-            queryString += `&${key}=${encodeURIComponent(payload[key])}`;
+        // Wait for Puter to initialize
+        let attempts = 0;
+        while (!window.puterBackend.isInitialized && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
         }
-        
-        script.src = url + queryString;
-        script.onerror = () => {
-            reject(new Error("CORS or Network Failure"));
-            delete window[callbackName];
-            if (script.parentNode) document.body.removeChild(script);
-        };
-        
-        script.onload = () => {
-            // Script loaded but callback might not have fired yet
-        };
-        
-        document.body.appendChild(script);
-    });
-}
 
-// 2. CHECK AUTH
-function checkAuth() {
-    const email = safeLSGet('os_email', null);
-    const pass = safeLSGet('os_password', null);
-    const configUrl = getConfiguredBackendUrl();
-    const url = safeLSGet('chat_backend_url', configUrl || null);
-    
-    // Auto-fill all the fields (including password)
-    if (url) document.getElementById('backend-url').value = url;
-    if (email) document.getElementById('login-email').value = email;
-    if (pass) document.getElementById('login-pass').value = pass;
+        if (!window.puterBackend.isInitialized) {
+            throw new Error('Puter backend failed to initialize');
+        }
 
-    // ALWAYS show the lock screen so the user has to click Unlock
-    document.getElementById('lock-screen').classList.remove('hidden');
+        // Check if user is already authenticated
+        const isAuthenticated = await window.puterBackend.isAuthenticated();
+        
+        if (isAuthenticated) {
+            const user = await window.puterBackend.getCurrentUser();
+            safeLSSet('os_email', user.email);
+            unlockOS(user.email);
+        } else {
+            document.getElementById('lock-screen').classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Auth check failed:', error);
+        document.getElementById('lock-screen').classList.remove('hidden');
+    }
 }
 
 // Listen for the "Enter" key on all login fields
 document.addEventListener('DOMContentLoaded', () => {
-    ['backend-url', 'login-email', 'login-pass'].forEach(id => {
+    ['login-email', 'login-pass'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('keypress', (e) => {
@@ -171,37 +133,39 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 });
 
-// 3. SUBMIT AUTH
+// SUBMIT AUTH - Authenticate with Puter.js
 async function submitAuth() {
-    const url = document.getElementById('backend-url').value.trim();
     const email = document.getElementById('login-email').value.toLowerCase().trim();
     const pass = document.getElementById('login-pass').value.trim();
     const btn = document.getElementById('auth-btn');
     
-    if(!url || !email || !pass) return showAuthError("Please fill out all fields.");
-    if(!url.includes('/exec')) return showAuthError("URL must contain /exec");
+    if (!email || !pass) return showAuthError("Please enter email and password.");
     
-    safeLSSet('chat_backend_url', url);
-    safeLSSet('os_email', email);
-    btn.innerText = "Connecting...";
+    btn.innerText = isLoginMode ? "Unlocking..." : "Creating Account...";
     document.getElementById('login-error').style.display = 'none';
 
     try {
-        const payload = { action: isLoginMode ? 'login' : 'register', email: email, password: pass };
+        let result;
         
-        // Pushing data via the JSONP bypass
-        const data = await jsonpRequest(url, payload);
-        if (data.success) {
-            safeLSSet('os_password', pass);
-            safeLSSet('chat_email', email);
-            safeLSSet('chat_password', pass);
+        if (isLoginMode) {
+            // Login
+            result = await window.puterBackend.authenticate(email, pass);
+        } else {
+            // Sign up
+            const username = email.split('@')[0];
+            result = await window.puterBackend.signUp(email, pass, username);
+        }
+
+        if (result.success) {
+            safeLSSet('os_email', email);
             unlockOS(email);
         } else {
-            showAuthError(data.error || "Authentication Failed");
+            showAuthError(result.error || "Authentication Failed");
             btn.innerText = isLoginMode ? "Unlock" : "Sign Up";
         }
-    } catch(e) {
-        showAuthError("Connection Failed. Did you deploy New Version in Google Scripts?");
+    } catch (error) {
+        console.error('Authentication error:', error);
+        showAuthError(error.message || "Connection Failed. Check console for details.");
         btn.innerText = isLoginMode ? "Unlock" : "Sign Up";
     }
 }

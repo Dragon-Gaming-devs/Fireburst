@@ -6,7 +6,16 @@
     <title>Fireburst OS</title>
     <link rel="icon" type="image/png" href="assets/images/dragon-login.png">
     <link rel="stylesheet" href="css/style.css">
-    <script src="coi-serviceworker.js"></script>
+    <!-- COI Service Worker - Optional for CheerpX isolation only -->
+    <script>
+        // Only load COI if explicitly needed (e.g., for native CheerpX apps)
+        const enableCOI = false; // Set to true if native CheerpX is needed in main app
+        if (enableCOI) {
+            const script = document.createElement('script');
+            script.src = 'coi-serviceworker.js';
+            document.head.appendChild(script);
+        }
+    </script>
 </head>
 <body>
     <!-- 1. Lock Screen / Login -->
@@ -18,9 +27,8 @@
 
         <div class="lock-content">
             <h2 id="auth-title">Fireburst OS</h2>
-            <p style="font-size: 12px; color: #aaa; margin-bottom: 20px;">Connect to your OS Server.</p>
+            <p style="font-size: 12px; color: #aaa; margin-bottom: 20px;">Sign in with Puter.js Account</p>
             
-            <input type="text" id="backend-url" placeholder="Google Backend URL (Do this once)">
             <input type="email" id="login-email" placeholder="Email Address">
             <input type="password" id="login-pass" placeholder="Password">
             
@@ -99,8 +107,10 @@
     </div>
 
     <script src="js/runtime-config.js"></script>
+    <script src="js/puter-backend.js"></script>
     <script src="js/vfs.js"></script>
-    <script src="js/cheerpx-manager.js"></script>
+    <script src="js/browser-config.js"></script>
+    <script src="js/cheerpx-bridge.js"></script>
     <script src="js/proxy-manager.js"></script>
     <script src="js/browsercode-manager.js"></script>
     <script src="js/window-manager.js"></script>
