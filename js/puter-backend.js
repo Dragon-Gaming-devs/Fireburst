@@ -122,11 +122,15 @@ class PuterBackend {
     async authenticate(email, password) {
         try {
             if (typeof window.puter !== 'undefined' && window.puter.auth) {
-                // Puter typically handles auth through UI flow
-                // For backend calls, we'd use the SDK's auth mechanism
-                const result = await window.puter.auth.login(email, password);
-                this.currentUser = result.user;
-                this.authToken = result.token;
+                const authFn = this._getPuterAuthMethod(['login', 'signIn', 'signin', 'authenticate']);
+                if (!authFn) {
+                    throw new Error('Puter auth API has no supported sign-in method');
+                }
+                const result = await authFn(email, password);
+                const resolvedUser = result?.user || result?.data?.user || (await this.getCurrentUser()) || { email };
+                const resolvedToken = result?.token || result?.data?.token || null;
+                this.currentUser = resolvedUser;
+                this.authToken = resolvedToken;
                 return {
                     success: true,
                     user: resolvedUser,
@@ -134,7 +138,7 @@ class PuterBackend {
                 };
             } else if (this.fallbackBackend) {
                 const response = await this._useFallback('login', { email, password });
-                if (!response || (response.success === false && response.ok !== true)) {
+                if (!response || response.error || (response.success === false && response.ok !== true)) {
                     throw new Error(response?.error || 'Fallback login failed');
                 }
                 this.currentUser = response.user || { email };
@@ -160,19 +164,24 @@ class PuterBackend {
     async signUp(email, password, username) {
         try {
             if (typeof window.puter !== 'undefined' && window.puter.auth) {
-                const result = await window.puter.auth.signup(email, password, {
-                    username: username
-                });
-                this.currentUser = result.user;
-                this.authToken = result.token;
+                const signupFn = this._getPuterAuthMethod(['signup', 'signUp', 'register', 'createUser']);
+                if (!signupFn) {
+                    throw new Error('Puter auth API has no supported sign-up method');
+                }
+                const result = await signupFn(email, password, { username: username });
+                const resolvedUser = result?.user || result?.data?.user || (await this.getCurrentUser()) || { email, username };
+                const resolvedToken = result?.token || result?.data?.token || null;
+                this.currentUser = resolvedUser;
+                this.authToken = resolvedToken;
                 return {
                     success: true,
                     user: resolvedUser,
                     token: resolvedToken
                 };
             } else if (this.fallbackBackend) {
-                const response = await this._useFallback('signup', { email, password, username });
-                if (!response || (response.success === false && response.ok !== true)) {
+                // GAS deployments commonly expose `register` rather than `signup`.
+                const response = await this._useFallback('register', { email, password, username });
+                if (!response || response.error || (response.success === false && response.ok !== true)) {
                     throw new Error(response?.error || 'Fallback signup failed');
                 }
                 this.currentUser = response.user || { email, username };
