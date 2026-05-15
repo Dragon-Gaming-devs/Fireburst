@@ -99,9 +99,18 @@ class PuterBackend {
             }
             return null;
         } catch (error) {
-            console.warn('Failed to get current user:', error);
+            // Expected when user is not signed in yet (often 401 from Puter API).
+            if (error?.status !== 401) console.warn('Failed to get current user:', error);
             return null;
         }
+    }
+
+    _getPuterAuthMethod(candidates) {
+        if (!window.puter?.auth) return null;
+        for (const name of candidates) {
+            if (typeof window.puter.auth[name] === 'function') return window.puter.auth[name].bind(window.puter.auth);
+        }
+        return null;
     }
 
     /**
@@ -120,8 +129,8 @@ class PuterBackend {
                 this.authToken = result.token;
                 return {
                     success: true,
-                    user: result.user,
-                    token: result.token
+                    user: resolvedUser,
+                    token: resolvedToken
                 };
             } else if (this.fallbackBackend) {
                 const response = await this._useFallback('login', { email, password });
@@ -158,8 +167,8 @@ class PuterBackend {
                 this.authToken = result.token;
                 return {
                     success: true,
-                    user: result.user,
-                    token: result.token
+                    user: resolvedUser,
+                    token: resolvedToken
                 };
             } else if (this.fallbackBackend) {
                 const response = await this._useFallback('signup', { email, password, username });
