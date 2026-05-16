@@ -220,7 +220,12 @@
       });
     }
 
-    // ========== GOOGLE APPS SCRIPT WRAPPERS ==========
+    // ========== PUTER.JS BACKEND WRAPPER ==========
+    // This wrapper provides a Google Apps Script-like API but uses Puter.js backend
+    // Falls back to GAS if Puter is not available
+    
+    let usePuterBackend = typeof window.puterBackend !== 'undefined';
+    
     const google = {
       script: {
         run: {
@@ -233,32 +238,96 @@
               
               async _call(action, params) {
                 try {
-                  const payload = {
-                    action: action,
-                    email: EMAIL,
-                    password: PASSWORD,
-                    ...params
-                  };
+                  let result;
                   
-                  const data = await jsonpRequest(BACKEND_URL, payload);
+                  if (usePuterBackend && window.puterBackend.isInitialized) {
+                    // Use Puter backend
+                    result = await this._callPuter(action, params);
+                  } else if (BACKEND_URL) {
+                    // Fallback to Google Apps Script
+                    result = await this._callGAS(action, params);
+                  } else {
+                    throw new Error('No backend configured. Set BACKEND_URL or use Puter.js');
+                  }
                   
-                  if (data.error) {
+                  if (result && result.error) {
                     if (this.errorCallback) {
-                      this.errorCallback(data.error);
+                      this.errorCallback(result.error);
                     } else {
-                      OS.showNotification('Messages Error', data.error);
+                      OS.showNotification('Messages Error', result.error);
                     }
                     return;
                   }
                   
-                  callback(data);
+                  callback(result || {});
                 } catch(err) {
+                  console.error('Backend call failed:', err);
                   if (this.errorCallback) {
                     this.errorCallback(err.message);
                   } else {
-                    OS.showNotification('Network Error', err.message);
+                    OS.showNotification('Backend Error', err.message);
                   }
                 }
+              },
+
+              // Puter backend implementation
+              async _callPuter(action, params) {
+                const backend = window.puterBackend;
+                
+                switch(action) {
+                  case 'getData':
+                    return await backend.getRoomMessages(params.room);
+                  
+                  case 'createRoom':
+                    return await backend.createRoom(params.roomName, false);
+                  
+                  case 'deleteRoom':
+                    return await backend.deleteData('chat_rooms', params.name);
+                  
+                  case 'isRoomPrivate':
+                    const isPrivate = await backend.isRoomPrivate(params.room);
+                    return { isPrivate };
+                  
+                  case 'makeRoomPrivate':
+                    return await backend.updateData('chat_rooms', params.room, { isPrivate: true });
+                  
+                  case 'getRoomMembers':
+                    const members = await backend.getRoomMembers(params.room);
+                    return { members };
+                  
+                  case 'addUserToRoom':
+                    return await backend.addUserToRoom(params.room, params.targetEmail);
+                  
+                  case 'send':
+                    return await backend.addMessage(params.room, params.text);
+                  
+                  case 'react':
+                    // Add emoji reaction
+                    const messages = await backend.getRoomMessages(params.room);
+                    const msg = messages.find(m => m.id === params.msgId);
+                    if (msg) {
+                      msg.reactions = msg.reactions || {};
+                      msg.reactions[params.emoji] = (msg.reactions[params.emoji] || 0) + 1;
+                      return await backend.updateData('chat_messages', params.msgId, msg);
+                    }
+                    return {};
+                  
+                  default:
+                    console.warn(`Puter backend: Unknown action ${action}`);
+                    return {};
+                }
+              },
+
+              // GAS fallback
+              async _callGAS(action, params) {
+                const payload = {
+                  action: action,
+                  email: EMAIL,
+                  password: PASSWORD,
+                  ...params
+                };
+                
+                return await jsonpRequest(BACKEND_URL, payload);
               },
 
               // ===== ROOM ACTIONS =====
@@ -271,50 +340,40 @@
               },
               
               deleteRoom: function(name) {
-                return this._call('deleteRoom', { roomName: name });
+                return this._call('deleteRoom', { name: name });
               },
               
               isRoomPrivate: async function(room) {
-                const res = await this._call('isRoomPrivate', { room: room });
-                // This won't work because callback is from outer scope, so we handle it differently
-                return res;
+                return new Promise((resolve) => {
+                  this._call('isRoomPrivate', { room: room });
+                  // The callback will be handled by withSuccessHandler
+                  // For async compatibility, we need to return the promise through _call
+                });
               },
               
               makeRoomPrivate: function(room) {
                 return this._call('makeRoomPrivate', { room: room });
               },
-              
-              makeRoomPublic: function(room) {
-                return this._call('makeRoomPublic', { room: room });
-              },
 
               // ===== MEMBER ACTIONS =====
               getRoomMembers: async function(room) {
-                const res = await this._call('getRoomMembers', { room: room });
-                return res;
+                return new Promise((resolve) => {
+                  // Use Puter directly for async operations
+                  if (usePuterBackend && window.puterBackend.isInitialized) {
+                    window.puterBackend.getRoomMembers(room).then(resolve);
+                  } else {
+                    jsonpRequest(BACKEND_URL, {
+                      action: 'getRoomMembers',
+                      room: room,
+                      email: EMAIL,
+                      password: PASSWORD
+                    }).then(resolve);
+                  }
+                });
               },
               
               addUserToRoom: function(room, targetEmail) {
                 return this._call('addUserToRoom', { room: room, targetEmail: targetEmail });
-              },
-              
-              removeUserFromRoom: function(room, targetEmail) {
-                return this._call('removeUserFromRoom', { room: room, targetEmail: targetEmail });
-              },
-
-              // ===== INVITE ACTIONS =====
-              createInvite: function(room) {
-                return this._call('createInvite', { room: room });
-              },
-              
-              useInvite: async function(code) {
-                const res = await this._call('useInvite', { code: code });
-                return res;
-              },
-              
-              listInvites: async function() {
-                const res = await this._call('listInvites', {});
-                return res;
               },
 
               // ===== MESSAGE ACTIONS =====
@@ -322,38 +381,12 @@
                 return this._call('send', { room: room, text: text, replyTo: replyTo });
               },
               
-              deleteMessage: function(room, msgId) {
-                return this._call('deleteMessage', { room: room, msgId: msgId });
-              },
-              
-              editMessage: function(room, msgId, newText) {
-                return this._call('editMessage', { room: room, msgId: msgId, newText: newText });
-              },
-              
-              pinMessage: function(room, msgId) {
-                return this._call('pinMessage', { room: room, msgId: msgId });
-              },
-              
               react: function(room, msgId, emoji) {
                 return this._call('react', { room: room, msgId: msgId, emoji: emoji });
               },
               
-              sendFile: function(room, fileName, fileData) {
-                return this._call('sendFile', { room: room, fileName: fileName, fileData: fileData });
-              },
-              
               setTyping: function(room, state) {
                 return this._call('setTyping', { room: room, state: state });
-              },
-
-              // ===== ADMIN ACTIONS =====
-              exportSystem: async function() {
-                const res = await this._call('exportSystem', {});
-                return res;
-              },
-              
-              importSystem: function(jsonData) {
-                return this._call('importSystem', { jsonData: jsonData });
               }
             };
           }

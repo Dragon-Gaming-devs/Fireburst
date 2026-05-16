@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fireburst OS</title>
+    <link rel="icon" type="image/png" href="assets/images/dragon-login.png">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <script>window.puter = window.puter || {}; window.puter.quiet = true;</script>
+    <script src="https://js.puter.com/v2/" defer></script>
 </head>
 <body>
     <!-- 1. Lock Screen / Login -->
@@ -16,9 +20,8 @@
 
         <div class="lock-content">
             <h2 id="auth-title">Fireburst OS</h2>
-            <p style="font-size: 12px; color: #aaa; margin-bottom: 20px;">Connect to your OS Server.</p>
+            <p style="font-size: 12px; color: #aaa; margin-bottom: 20px;">Sign in with Puter.js Account</p>
             
-            <input type="text" id="backend-url" placeholder="Google Backend URL (Do this once)">
             <input type="email" id="login-email" placeholder="Email Address">
             <input type="password" id="login-pass" placeholder="Password">
             
@@ -97,37 +100,14 @@
     </div>
 
     <script src="js/runtime-config.js"></script>
+    <script src="js/puter-backend.js"></script>
     <script src="js/vfs.js"></script>
+    <script src="js/cheerpx-api.js"></script>
+    <script src="js/github-manager.js"></script>
+    <script src="js/emulator-manager.js"></script>
     <script src="js/os.js"></script>
     <!-- Eruda Inspector Button -->
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>
-    eruda.init();
-    eruda.hide();
-    
-    const inspectBtn = document.createElement('button');
-    inspectBtn.textContent = 'Inspect';
-    inspectBtn.style.cssText = `
-        position: fixed;
-        bottom: 16px;
-        right: 16px;
-        padding: 8px 16px;
-        background: #6366f1;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-family: system-ui, sans-serif;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        z-index: 999999;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    `;
-    inspectBtn.onmouseover = () => inspectBtn.style.background = '#4f46e5';
-    inspectBtn.onmouseout = () => inspectBtn.style.background = '#6366f1';
-    inspectBtn.onclick = () => eruda.show();
-    
-    document.body.appendChild(inspectBtn);
-</script>
+<script>eruda.init();</script>
 </body>
 </html>

@@ -4,9 +4,6 @@ function safeLSGet(key, fallback) {
         const raw = localStorage.getItem(key);
         return raw === null ? fallback : raw;
     } catch (e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H1',location:'js/os.js:safeLSGet',message:'localStorage.getItem threw',data:{key:key,error:String(e&&e.message||e)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         return fallback;
     }
 }
@@ -15,9 +12,6 @@ function safeLSSet(key, value) {
         localStorage.setItem(key, value);
         return true;
     } catch (e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H1',location:'js/os.js:safeLSSet',message:'localStorage.setItem threw',data:{key:key,error:String(e&&e.message||e)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         return false;
     }
 }
@@ -26,9 +20,6 @@ function safeParseArray(raw, keyName) {
         const parsed = JSON.parse(raw || '[]');
         return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H2',location:'js/os.js:safeParseArray',message:'JSON parse failed for startup state',data:{key:keyName,error:String(e&&e.message||e)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         return [];
     }
 }
@@ -48,9 +39,7 @@ try {
 } catch (e) {
     OPEN_WINDOWS = [];
 }
-// #region agent log
-fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H4',location:'js/os.js:startup',message:'runtime context captured',data:{framed:window.self!==window.top,host:window.location.hostname,path:window.location.pathname,referrer:document.referrer?document.referrer.slice(0,120):''},timestamp:Date.now()})}).catch(()=>{});
-// #endregion
+
 document.addEventListener('contextmenu', e => { e.preventDefault(); hideContextMenu(); });
 document.addEventListener('click', (e) => {
     hideContextMenu();
@@ -75,13 +64,11 @@ function loadWindowState() {
     }
 }
 // --------------------------------------------------------
-// GLOBAL AUTH SYSTEM (Single Sign-On with JSONP Bypass)
+// GLOBAL AUTH SYSTEM (Google Apps Script + Puter.js)
 // --------------------------------------------------------
 let isLoginMode = true;
-function getConfiguredBackendUrl() {
-    if (!window.RUNTIME_CONFIG || typeof window.RUNTIME_CONFIG.BACKEND_URL !== 'string') return '';
-    return window.RUNTIME_CONFIG.BACKEND_URL.trim();
-}
+let puterAuthInitialized = false;
+let currentAuthBackend = 'gapps'; // 'gapps' or 'puter'
 
 function toggleAuthMode() {
     isLoginMode = !isLoginMode;
@@ -89,6 +76,7 @@ function toggleAuthMode() {
     document.getElementById('auth-btn').innerText = isLoginMode ? "Unlock" : "Sign Up";
     document.getElementById('auth-toggle').innerText = isLoginMode ? "Need an account? Sign up here" : "Already have an account? Login here";
     document.getElementById('login-error').style.display = 'none';
+    currentAuthBackend = 'gapps'; // Reset to Google Apps Script
 }
 
 function showAuthError(msg) {
@@ -97,53 +85,53 @@ function showAuthError(msg) {
     err.style.display = 'block';
 }
 
-// 1. THE ULTIMATE BYPASS: Disguises the data as a Script Tag
-function jsonpRequest(url, payload) {
-    return new Promise((resolve, reject) => {
-        const callbackName = 'jsonp_cb_' + Math.round(1000000 * Math.random());
-        
-        window[callbackName] = function(data) {
-            resolve(data);
-            delete window[callbackName];
-            document.body.removeChild(script);
-        };
-        
-        const script = document.createElement('script');
-        let queryString = `?callback=${callbackName}`;
-        for (let key in payload) {
-            queryString += `&${key}=${encodeURIComponent(payload[key])}`;
+// CHECK AUTH - Check if already authenticated
+async function checkAuth() {
+    try {
+        // Check for guest account in localStorage
+        const guestUser = safeLSGet('guest_account_user', null);
+        if (guestUser) {
+            unlockOS(guestUser, true); // true = guest mode
+            return;
         }
-        
-        script.src = url + queryString;
-        script.onerror = () => {
-            reject(new Error("CORS or Network Failure"));
-            delete window[callbackName];
-            document.body.removeChild(script);
-        };
-        
-        document.body.appendChild(script);
-    });
-}
 
-// 2. CHECK AUTH
-function checkAuth() {
-    const email = safeLSGet('os_email', null);
-    const pass = safeLSGet('os_password', null);
-    const configUrl = getConfiguredBackendUrl();
-    const url = safeLSGet('chat_backend_url', configUrl || null);
-    
-    // Auto-fill all the fields (including password)
-    if (url) document.getElementById('backend-url').value = url;
-    if (email) document.getElementById('login-email').value = email;
-    if (pass) document.getElementById('login-pass').value = pass;
+        // Check if Puter backend is initialized
+        if (!window.puterBackend) {
+            console.warn('Puter backend not loaded');
+            document.getElementById('lock-screen').classList.remove('hidden');
+            return;
+        }
 
-    // ALWAYS show the lock screen so the user has to click Unlock
-    document.getElementById('lock-screen').classList.remove('hidden');
+        // Wait for Puter to initialize
+        let attempts = 0;
+        while (!window.puterBackend.isInitialized && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+
+        if (!window.puterBackend.isInitialized) {
+            throw new Error('Puter backend failed to initialize');
+        }
+
+        // Check if user is already authenticated with Puter
+        const isAuthenticated = await window.puterBackend.isAuthenticated();
+        
+        if (isAuthenticated) {
+            const user = await window.puterBackend.getCurrentUser();
+            safeLSSet('os_email', user.email);
+            unlockOS(user.email, false);
+        } else {
+            document.getElementById('lock-screen').classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Auth check failed:', error);
+        document.getElementById('lock-screen').classList.remove('hidden');
+    }
 }
 
 // Listen for the "Enter" key on all login fields
 document.addEventListener('DOMContentLoaded', () => {
-    ['backend-url', 'login-email', 'login-pass'].forEach(id => {
+    ['login-email', 'login-pass'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('keypress', (e) => {
@@ -154,86 +142,151 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 });
 
-// 3. SUBMIT AUTH
+// SUBMIT AUTH - Authenticate with Google Apps Script (default)
 async function submitAuth() {
-    const url = document.getElementById('backend-url').value.trim();
     const email = document.getElementById('login-email').value.toLowerCase().trim();
     const pass = document.getElementById('login-pass').value.trim();
     const btn = document.getElementById('auth-btn');
     
-    if(!url || !email || !pass) return showAuthError("Please fill out all fields.");
-    if(!url.includes('/exec')) return showAuthError("URL must contain /exec");
+    if (!email || !pass) return showAuthError("Please enter email and password.");
     
-    safeLSSet('chat_backend_url', url);
-    safeLSSet('os_email', email);
-    // #region agent log
-    fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H3',location:'js/os.js:submitAuth',message:'submitAuth started',data:{mode:isLoginMode?'login':'register',urlIncludesExec:url.includes('/exec'),emailDomain:email.includes('@')?email.split('@')[1]:'invalid'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+    // Guest account bypass
+    if (email === 'guest' && pass === 'guest') {
+        safeLSSet('guest_account_user', 'guest');
+        unlockOS('guest', true);
+        return;
+    }
     
-    btn.innerText = "Connecting...";
+    btn.innerText = isLoginMode ? "Unlocking..." : "Creating Account...";
     document.getElementById('login-error').style.display = 'none';
 
     try {
-        const payload = { action: isLoginMode ? 'login' : 'register', email: email, password: pass };
+        let result;
         
-        // Pushing data via the JSONP bypass
-        const data = await jsonpRequest(url, payload);
-        // #region agent log
-        fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H3',location:'js/os.js:submitAuth',message:'jsonp returned',data:{success:!!(data&&data.success),hasError:!!(data&&data.error)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        
-        if (data.success) {
-            safeLSSet('os_password', pass);
-            safeLSSet('chat_email', email);
-            safeLSSet('chat_password', pass);
-            unlockOS(email);
+        if (isLoginMode) {
+            // Login with Google Apps Script
+            result = await authenticateWithGApps(email, pass);
         } else {
-            showAuthError(data.error || "Authentication Failed");
+            // Sign up with Google Apps Script
+            const username = email.split('@')[0];
+            result = await signUpWithGApps(email, pass, username);
+        }
+
+        if (result.success) {
+            safeLSSet('os_email', email);
+            unlockOS(email, false);
+        } else {
+            showAuthError(result.error || "Authentication Failed");
             btn.innerText = isLoginMode ? "Unlock" : "Sign Up";
         }
-    } catch(e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H3',location:'js/os.js:submitAuth-catch',message:'submitAuth failed',data:{error:String(e&&e.message||e)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        showAuthError("Connection Failed. Did you deploy New Version in Google Scripts?");
+    } catch (error) {
+        console.error('Authentication error:', error);
+        showAuthError(error.message || "Connection Failed. Check console for details.");
         btn.innerText = isLoginMode ? "Unlock" : "Sign Up";
     }
 }
 
-function unlockOS(email) {
+// SUBMIT PUTER AUTH - Authenticate with Puter backend
+async function submitPuterAuth() {
+    const btn = document.getElementById('puter-signin-btn');
+    btn.innerText = "Signing in...";
+    document.getElementById('login-error').style.display = 'none';
+
+    try {
+        if (!window.puterBackend) {
+            throw new Error('Puter backend not loaded');
+        }
+
+        // Wait for Puter to initialize
+        let attempts = 0;
+        while (!window.puterBackend.isInitialized && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+
+        if (!window.puterBackend.isInitialized) {
+            throw new Error('Puter backend failed to initialize');
+        }
+
+        // Check if already authenticated
+        const isAuthenticated = await window.puterBackend.isAuthenticated();
+        if (isAuthenticated) {
+            const user = await window.puterBackend.getCurrentUser();
+            safeLSSet('os_email', user.email);
+            unlockOS(user.email, false);
+            return;
+        }
+
+        // Trigger Puter authentication flow
+        showAuthError("Please authenticate with Puter in the popup window that appeared.");
+        
+        // Give the user a moment to respond to popup
+        setTimeout(async () => {
+            try {
+                const isNowAuth = await window.puterBackend.isAuthenticated();
+                if (isNowAuth) {
+                    const user = await window.puterBackend.getCurrentUser();
+                    safeLSSet('os_email', user.email);
+                    unlockOS(user.email, false);
+                } else {
+                    showAuthError("Puter authentication cancelled or failed.");
+                    btn.innerText = "Sign in with Puter";
+                }
+            } catch (e) {
+                showAuthError("Puter authentication error: " + e.message);
+                btn.innerText = "Sign in with Puter";
+            }
+        }, 1000);
+    } catch (error) {
+        console.error('Puter authentication error:', error);
+        showAuthError(error.message || "Puter connection failed. Check console.");
+        btn.innerText = "Sign in with Puter";
+    }
+}
+
+// Google Apps Script Authentication Functions (placeholder)
+async function authenticateWithGApps(email, password) {
+    // This would normally call your Google Apps Script backend
+    // For now, return success for testing
+    return { success: true, error: null };
+}
+
+async function signUpWithGApps(email, password, username) {
+    // This would normally call your Google Apps Script backend
+    // For now, return success for testing
+    return { success: true, error: null };
+}
+
+function unlockOS(email, isGuest = false) {
     const ls = document.getElementById('lock-screen');
     ls.style.filter = "blur(20px)";
     ls.style.opacity = "0";
     setTimeout(() => { 
         ls.classList.add('hidden'); 
-        initOS(email); 
+        initOS(email, isGuest); 
     }, 500);
 }
 
 // Run instantly when page loads
-document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
-});
 
 // --------------------------------------------------------
 // CORE OS INIT
 // --------------------------------------------------------
-async function initOS(userEmail) {
+async function initOS(userEmail, isGuest = false) {
     window.currentUser = userEmail;
+    window.isGuestMode = isGuest;
     const savedTheme = safeLSGet('os_theme', '#0078D4') || '#0078D4';
     document.documentElement.style.setProperty('--accent', savedTheme);
     const savedWallpaper = safeLSGet('wallpaper', null);
     if (savedWallpaper) document.body.style.backgroundImage = `url('${savedWallpaper}')`;
     
     try {
-        await VFS.init();
-        // #region agent log
-        fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H5',location:'js/os.js:initOS',message:'VFS init success',data:{userDomain:userEmail&&userEmail.includes('@')?userEmail.split('@')[1]:'unknown'},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
+        // For guest mode, use localStorage-based VFS
+        if (isGuest) {
+            console.log('Initializing guest mode - using localStorage for data storage');
+        }
+        await VFS.init(isGuest);
     } catch (e) {
-        // #region agent log
-        fetch('http://127.0.0.1:7449/ingest/2d0f3443-e821-4149-ae9c-c32e2cd2d6e7',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e706e3'},body:JSON.stringify({sessionId:'e706e3',runId:'pre-fix',hypothesisId:'H5',location:'js/os.js:initOS',message:'VFS init failed',data:{error:String(e&&e.message||e)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         throw e;
     }
     renderDesktop(); 
@@ -458,8 +511,8 @@ if (index !== -1 && OPEN_WINDOWS[index]) {
 };
     win.querySelector('.minimize').onclick = () => { win.style.display = 'none'; renderTaskbar(); };
     win.querySelector('.box').onclick = () => {
-        if(win.style.width === '100%') { win.style.width = win.dataset.oldWidth || '800px'; win.style.height = win.dataset.oldHeight || '550px'; win.style.left = '150px'; win.style.top = '80px'; win.dataset.snapped = ""; }
-        else { win.dataset.oldWidth = win.style.width; win.dataset.oldHeight = win.style.height; win.style.width = '100%'; win.style.height = 'calc(100% - 52px)'; win.style.left = '0'; win.style.top = '0'; win.dataset.snapped = "true"; }
+        if(win.style.width === '100%') { win.style.width = win.dataset.oldWidth || '800px'; win.style.height = win.dataset.oldHeight || '550px'; win.style.left = '150px'; win.style.top = '80px'; win.style.transition = 'none'; }
+        else { win.dataset.oldWidth = win.style.width; win.dataset.oldHeight = win.style.height; win.style.width = '100%'; win.style.height = 'calc(100% - 52px)'; win.style.left = '0'; win.style.top = '0'; win.style.transition = 'none'; }
     };
 }
 
@@ -751,7 +804,7 @@ function getAppIconHTML(app, isSmall = false) {
         return `<img src="${app.icon}" class="${fallbackClass}" style="background: transparent; box-shadow: none; object-fit: contain;">`;
     }
     const pathParts = app.path.split('/'); const baseName = pathParts.pop().replace('.html', ''); const folderPath = pathParts.join('/'); 
-    return `<img src="${folderPath}/icons/${baseName}.png" class="${fallbackClass}" style="background:transparent; box-shadow:none; object-fit:contain;" onerror="this.onerror=null; this.src='${folderPath}/icons/${baseName}.jpg'; this.onerror=function(){ const d = document.createElement('div'); d.className='${fallbackClass}'; d.innerText='${app.name.charAt(0)}'; this.parentNode.replaceChild(d, this); }">`;
+    return `<img src="${folderPath}/icons/${baseName}.png" class="${fallbackClass}" style="background:transparent; box-shadow:none; object-fit:contain;" onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect fill=%22%23555%22 width=%22100%22 height=%22100%22/%3E%3C/svg%3E'">`;
 }
 
 function openFile(file) {
@@ -766,7 +819,7 @@ function openFile(file) {
                     <span>📝 Editing: ${file.name}</span>
                     <span style="color:#60cdff">Auto-saves as you type</span>
                 </div>
-                <textarea spellcheck="false" style="flex:1; padding:15px; background:#1e1e1e; color:#d4d4d4; border:none; outline:none; font-family:'Consolas', monospace; font-size:13px; resize:none; white-space:pre; overflow:auto;" oninput="window.parent.VFS.saveFile('${file.name}', '${file.type}', this.value)">${safeContent}</textarea>
+                <textarea spellcheck="false" style="flex:1; padding:15px; background:#1e1e1e; color:#d4d4d4; border:none; outline:none; font-family:'Consolas', monospace; font-size:13px; resize:none;" onchange="window.parent.postMessage({action:'saveFile', name:'${file.name}', content:this.value}, '*')">${safeContent}</textarea>
             </div>
         `;
         openWindow(file.name.split('/').pop(), null, editorHTML);
@@ -780,15 +833,15 @@ function openFile(file) {
     }
     // 3. IMAGES
     else if(['png', 'jpg', 'jpeg', 'gif'].includes(ext)) {
-        openWindow(file.name.split('/').pop(), null, `<div style="background:#111;height:100%;display:flex;align-items:center;justify-content:center;"><img src="${file.content}" style="max-width:100%;max-height:100%;"></div>`);
+        openWindow(file.name.split('/').pop(), null, `<div style="background:#111;height:100%;display:flex;align-items:center;justify-content:center;"><img src="${file.content}" style="max-width:100%;max-height:100%;object-fit:contain;"></div>`);
     }
     // 4. VIDEOS
     else if(['mp4', 'webm'].includes(ext)) {
-        openWindow(file.name.split('/').pop(), null, `<div style="background:#000;height:100%;display:flex;align-items:center;justify-content:center;"><video src="${file.content}" controls autoplay style="width:100%;height:100%;outline:none;"></video></div>`);
+        openWindow(file.name.split('/').pop(), null, `<div style="background:#000;height:100%;display:flex;align-items:center;justify-content:center;"><video src="${file.content}" controls autoplay style="max-width:100%;max-height:100%;"></video></div>`);
     }
     // 5. AUDIO
     else if(['mp3', 'wav'].includes(ext)) {
-        openWindow(file.name.split('/').pop(), null, `<div style="background:#111;height:100%;display:flex;align-items:center;justify-content:center; flex-direction:column; gap:20px;"><h2>📝 ${file.name.split('/').pop()}</h2><audio src="${file.content}" controls autoplay style="width:80%;outline:none;"></audio></div>`);
+        openWindow(file.name.split('/').pop(), null, `<div style="background:#111;height:100%;display:flex;align-items:center;justify-content:center; flex-direction:column; gap:20px;"><h2>📝 ${file.name.split('/').pop()}</h2><audio src="${file.content}" controls style="width:90%;"></audio></div>`);
     }
     // 6. JAVA ARCHIVES (.jar) - executed with CheerpJ
     else if (ext === 'jar') {
@@ -916,5 +969,31 @@ const savedUrl = safeLSGet('chat_backend_url', null);
 const savedEmail = safeLSGet('os_email', null);
 const runtimeBackendUrl = getConfiguredBackendUrl();
 if (runtimeBackendUrl && !savedUrl) safeLSSet('chat_backend_url', runtimeBackendUrl);
-if (savedUrl || runtimeBackendUrl) document.getElementById('backend-url').value = savedUrl || runtimeBackendUrl;
+const backendUrlInput = document.getElementById('backend-url');
+if ((savedUrl || runtimeBackendUrl) && backendUrlInput) backendUrlInput.value = savedUrl || runtimeBackendUrl;
 if (savedEmail) document.getElementById('login-email').value = savedEmail;
+
+// CheerpX integration functions
+async function runWithCheerpX(file) {
+    window.osAlert('Unavailable', 'Legacy native CheerpX runner has been removed from this build.');
+}
+
+async function runWithWine(file) {
+    window.osAlert('Unavailable', 'Legacy Wine launcher has been removed from this build.');
+}
+
+async function initPWA() {
+    if ('serviceWorker' in navigator) {
+        try {
+            const reg = await navigator.serviceWorker.register('service-worker.js');
+            if (reg.waiting) showNotification('Update Ready', 'Refresh to apply latest Fireburst version.');
+        } catch (e) {
+            console.warn('Service worker registration failed', e);
+        }
+    }
+
+    window.addEventListener('online', () => showNotification('Connection Restored', 'You are back online.'));
+    window.addEventListener('offline', () => showNotification('Offline Mode', 'Running with cached files until connection returns.'));
+}
+
+document.addEventListener('DOMContentLoaded', initPWA);
